@@ -1,0 +1,14 @@
+\begin{table}[t]
+\centering
+\footnotesize
+\caption{Clean distributed ANN baseline versus TrustANN overhead.}
+\label{tab:harness-clean-overhead}
+\begin{tabular}{llllll}
+\toprule
+system & trusted_rate & qps & p50_ms & p95_ms & p95_overhead_pct \\
+\midrule
+unverified_baseline & 1.0 & 1050.232810526302 & 0.9085165002034046 & 1.006127603614004 & 0.0 \\
+trustann & 0.0 & 966.9592219034673 & 1.0226890008198097 & 1.1003319035808088 & 9.363056895410038 \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,9 @@
+syntax = "proto3";
+package trustann;
+message QueryRequest { string query_id=1; repeated float vector=2; uint32 k=3; uint32 shard_id=4; string experiment=5; }
+message Neighbor { int64 id=1; float distance=2; }
+message Evidence { string commitment=1; uint32 candidate_count=2; float consistency=3; float diversity=4; bool poisoned=5; }
+message QueryResponse { string query_id=1; uint32 shard_id=2; uint32 replica_id=3; bool available=4; repeated Neighbor neighbors=5; Evidence evidence=6; string error=7; double server_ms=8; }
+message HealthRequest {}
+message HealthResponse { bool ok=1; uint32 shard_id=2; uint32 replica_id=3; uint64 indexed_vectors=4; }
+service Worker { rpc Search(QueryRequest) returns (QueryResponse); rpc Health(HealthRequest) returns (HealthResponse); }

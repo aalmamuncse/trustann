@@ -1,0 +1,349 @@
+#!/usr/bin/env python3
+"""
+Mac-side TrustANN controller.
+
+The Mac owns AWS credentials. The coordinator is the deployment/experiment
+control plane. This CLI provisions EC2 capacity with AWS, then invokes the
+coordinator over SSH. The coordinator configures workers over the private VPC.
+"""
+import argparse, json, os, shlex, subprocess, sys, time
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
+ROOT = Path(__file__).resolve().parents[1]
+CFG = ROOT / "config" / "mac.yaml"
+
+def load_cfg():
+    if yaml is None:
+        raise SystemExit("Install PyYAML on the Mac: python3 -m pip install pyyaml boto3")
+    with open(CFG) as f:
+        return yaml.safe_load(f)
+
+def run(cmd, check=True):
+    print("+", " ".join(shlex.quote(str(x)) for x in cmd))
+    return subprocess.run(cmd, text=True, check=check)
+
+def ssh_coord(cfg, remote_cmd):
+    c = cfg["coordinator"]
+    return run([
+        "ssh", "-o", "BatchMode=yes",
+        "-o", "StrictHostKeyChecking=accept-new",
+        "-o", f"ConnectTimeout={c.get('connect_timeout_s', 15)}",
+        "-i", c["ssh_key"],
+        f'{c["ssh_user"]}@{c["host"]}',
+        remote_cmd
+    ])
+
+def coordinator_python_prefix(cfg):
+    req = f"{cfg['coordinator']['remote_root']}/requirements.txt"
+    return (
+        "set -e; "
+        "mkdir -p ~/.ssh; "
+        "if [ ! -x ~/trustann-env/bin/python ]; then "
+        "  echo '[coordinator] Creating ~/trustann-env'; "
+        "  python3 -m venv ~/trustann-env; "
+        "fi; "
+        "echo '[coordinator] Installing/verifying dependencies'; "
+        "~/trustann-env/bin/python -m pip install -q --disable-pip-version-check -r "
+        f"{shlex.quote(req)}; "
+        "PY=~/trustann-env/bin/python; "
+    )
+
+def run_coord_python(cfg, args):
+    return ssh_coord(cfg, coordinator_python_prefix(cfg) + "cd " +
+                     shlex.quote(cfg["coordinator"]["remote_root"]) +
+                     ' && "$PY" orchestrator.py ' + args)
+
+def scp_to_coord(cfg, local, remote):
+    c = cfg["coordinator"]
+    return run([
+        "scp", "-q", "-o", "StrictHostKeyChecking=accept-new",
+        "-i", c["ssh_key"], str(local),
+        f'{c["ssh_user"]}@{c["host"]}:{remote}'
+    ])
+
+def bootstrap(cfg):
+    c = cfg["coordinator"]
+    # Upload the control-plane package itself. This is idempotent.
+    archive = ROOT / ".control_bundle.tar.gz"
+    import tarfile
+    with tarfile.open(archive, "w:gz") as t:
+        t.add(ROOT, arcname="TrustANN_AWS_Experiment_Harness")
+    scp_to_coord(cfg, archive, "/tmp/trustann_harness.tar.gz")
+    cmd = (
+        "rm -rf ~/TrustANN_AWS_Experiment_Harness && "
+        "mkdir -p ~/TrustANN_AWS_Experiment_Harness && "
+        "tar -xzf /tmp/trustann_harness.tar.gz -C ~ && "
+        "chmod +x ~/TrustANN_AWS_Experiment_Harness/macctl/trustannctl 2>/dev/null || true && "
+        "echo 'Coordinator harness installed.'"
+    )
+    ssh_coord(cfg, cmd)
+    archive.unlink(missing_ok=True)
+
+    # Automatically prepare the coordinator Python environment.
+    ssh_coord(cfg, coordinator_python_prefix(cfg) + "echo '[coordinator] Environment ready.'")
+
+    # One-time: place the EC2 SSH key on the coordinator so it can manage
+    # workers over their private IPs. The key never leaves the user's Mac
+    # except for this intended coordinator control-plane copy.
+    key = Path(os.path.expanduser(c["ssh_key"]))
+    remote_key = c.get("remote_key", "~/.ssh/trustann-key.pem")
+    scp_to_coord(cfg, key, remote_key)
+    ssh_coord(cfg, f"chmod 600 {shlex.quote(remote_key)} && mkdir -p ~/.ssh")
+    print("Bootstrap complete.")
+
+def install_workers(cfg, worker_host=None):
+    """Install the complete worker environment through the coordinator."""
+    xs=[i for i in worker_instances(cfg) if i["State"]["Name"]=="running"]
+    if worker_host:
+        xs=[i for i in xs if i.get("PrivateIpAddress")==worker_host or i.get("PublicIpAddress")==worker_host]
+        if not xs:
+            raise SystemExit(f"Worker not found/running: {worker_host}")
+    hosts=[i["PrivateIpAddress"] for i in xs]
+    if not hosts:
+        raise SystemExit("No running workers found.")
+    remote_script = r'''#!/usr/bin/env bash
+set -u
+for HOST in "$@"; do
+  echo
+  echo "============================================================"
+  echo "Installing worker: $HOST"
+  echo "============================================================"
+  ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 \
+      -i "$HOME/.ssh/trustann-key.pem" "ec2-user@$HOST" 'bash -s' <<'REMOTE'
+set -e
+ROOT="$HOME/trustann-worker"
+LOG="$ROOT/hnswlib-install.log"
+echo "[worker] Installing system build prerequisites..."
+sudo dnf install -y gcc gcc-c++ make python3-devel >/tmp/trustann_dnf.log 2>&1
+echo "[worker] Creating virtual environment..."
+mkdir -p "$ROOT"
+python3 -m venv "$ROOT/venv"
+echo "[worker] Upgrading pip build tooling..."
+"$ROOT/venv/bin/python" -m pip install --upgrade pip setuptools wheel
+echo "[worker] Installing NumPy and gRPC..."
+"$ROOT/venv/bin/python" -m pip install numpy grpcio grpcio-tools
+echo "[worker] Installing hnswlib build dependency..."
+"$ROOT/venv/bin/python" -m pip install pybind11
+
+echo "[worker] Installing hnswlib..."
+CXX=/usr/bin/g++ CC=/usr/bin/gcc \
+"$ROOT/venv/bin/python" -m pip install --no-build-isolation "hnswlib==0.8.0" >"$LOG" 2>&1 || {
+  echo "[worker] hnswlib FAILED; log=$LOG"
+  tail -n 100 "$LOG"
+  exit 1
+}
+echo "[worker] Verifying imports..."
+"$ROOT/venv/bin/python" -c 'import numpy, grpc, hnswlib; print("numpy",numpy.__version__); print("grpc",grpc.__version__); print("hnswlib",hnswlib.__file__)'
+echo "[worker] Installation complete."
+REMOTE
+  if [ $? -ne 0 ]; then exit 1; fi
+done
+'''
+    script=Path("/tmp/trustann_install_workers.sh")
+    script.write_text(remote_script)
+    script.chmod(0o755)
+    scp_to_coord(cfg,script,"/tmp/trustann_install_workers.sh")
+    script.unlink(missing_ok=True)
+    cmd="chmod +x /tmp/trustann_install_workers.sh && /tmp/trustann_install_workers.sh " + " ".join(shlex.quote(h) for h in hosts)
+    return ssh_coord(cfg,cmd)
+
+def aws_client(cfg):
+    import boto3
+    return boto3.client("ec2", region_name=cfg["aws"]["region"])
+
+def worker_instances(cfg, include_stopped=True):
+    ec2 = aws_client(cfg)
+    filters = [
+        {"Name": "tag:Project", "Values": [cfg["aws"]["project_tag"]]},
+        {"Name": "tag:Role", "Values": ["Worker"]},
+    ]
+    if not include_stopped:
+        filters.append({"Name":"instance-state-name","Values":["running","pending"]})
+    r = ec2.describe_instances(Filters=filters)
+    return [i for res in r["Reservations"] for i in res["Instances"]]
+
+def ensure_worker_ssh_rule(cfg):
+    """Allow coordinator SG to SSH to workers without exposing SSH publicly."""
+    ec2 = aws_client(cfg)
+    sg = cfg["aws"]["worker_internal_sg"]
+    source = cfg["aws"]["coordinator_sg"]
+    try:
+        ec2.authorize_security_group_ingress(
+            GroupId=sg, IpPermissions=[{
+                "IpProtocol":"tcp", "FromPort":22, "ToPort":22,
+                "UserIdGroupPairs":[{"GroupId":source}]
+            }])
+        print("Added private-VPC SSH rule.")
+    except ec2.exceptions.ClientError as e:
+        if "already exists" not in str(e).lower():
+            raise
+
+def provision(cfg, count):
+    ensure_worker_ssh_rule(cfg)
+    ec2 = aws_client(cfg)
+    xs = worker_instances(cfg)
+    reusable = [i for i in xs if i["State"]["Name"] in ("running","pending","stopped")]
+    if len(reusable) >= count:
+        ids = [i["InstanceId"] for i in reusable[:count]]
+        stopped = [i for i in reusable[:count] if i["State"]["Name"] == "stopped"]
+        if stopped:
+            ec2.start_instances(InstanceIds=[i["InstanceId"] for i in stopped])
+        running_ids = [i["InstanceId"] for i in reusable[:count]]
+        ec2.get_waiter("instance_running").wait(InstanceIds=running_ids)
+    else:
+        n = count - len(reusable)
+        a = cfg["aws"]
+        r = ec2.run_instances(
+            ImageId=a["ami_id"], InstanceType=a["instance_type"],
+            MinCount=n, MaxCount=n, KeyName=a["key_name"],
+            SubnetId=a["subnet_id"], SecurityGroupIds=a["security_group_ids"],
+            BlockDeviceMappings=[{"DeviceName":"/dev/xvda","Ebs":{
+                "VolumeSize":a["volume_size_gb"],"VolumeType":"gp3",
+                "DeleteOnTermination":True}}],
+            TagSpecifications=[{"ResourceType":"instance","Tags":[
+                {"Key":"Project","Value":a["project_tag"]},
+                {"Key":"Role","Value":"Worker"}]}])
+        ids=[i["InstanceId"] for i in r["Instances"]]
+        ec2.get_waiter("instance_running").wait(InstanceIds=ids)
+    xs = worker_instances(cfg)
+    xs = [i for i in xs if i["State"]["Name"] == "running"]
+    xs.sort(key=lambda x: x["InstanceId"])
+    print(f"Running workers: {len(xs)}")
+    for i in xs:
+        print(i["InstanceId"], i.get("PrivateIpAddress"), i.get("PublicIpAddress"))
+    return xs
+
+def write_topology(cfg, instances):
+    c=cfg["cluster"]; need=c["shards"]*c["replicas"]
+    if len(instances)<need:
+        raise SystemExit(f"Need {need} workers for {c['shards']} shards x {c['replicas']} replicas; have {len(instances)}")
+    workers=[]
+    idx=0
+    for sid in range(c["shards"]):
+        for rid in range(c["replicas"]):
+            i=instances[idx]; idx+=1
+            workers.append({
+                "name":f"s{sid}r{rid}",
+                "host":i["PrivateIpAddress"],
+                "public_host":i.get("PublicIpAddress"),
+                "instance_id":i["InstanceId"],
+                "shard":sid, "replica":rid,
+                "failure_domain":cfg["cluster"].get("failure_domains",["az-a","az-b","az-c"])[rid % 3],
+                "port":c["port"]
+            })
+    path=Path("/tmp/trustann_topology.json")
+    path.write_text(json.dumps({
+        "workers":workers,
+        "cluster":c,
+        "dataset":cfg["dataset"],
+        "trustann":cfg["trustann"],
+        "coordshift":cfg["coordshift"],
+        "experiments":cfg["experiments"],
+    },indent=2))
+    return path
+
+def deploy(cfg, instances):
+    topo=write_topology(cfg,instances)
+    remote="/tmp/trustann_topology.json"
+    scp_to_coord(cfg,topo,remote)
+    run_coord_python(cfg, f"--config {remote} --deploy")
+    topo.unlink(missing_ok=True)
+
+def main():
+    p=argparse.ArgumentParser(prog="trustannctl")
+    sub=p.add_subparsers(dest="cmd",required=True)
+    sub.add_parser("bootstrap")
+    q=sub.add_parser("up"); q.add_argument("--workers",type=int)
+    sub.add_parser("deploy")
+    iw=sub.add_parser("install-workers"); iw.add_argument("--worker",default="")
+    wd=sub.add_parser("worker-debug"); wd.add_argument("--worker",required=True)
+    s=sub.add_parser("scale"); s.add_argument("--workers",type=int,required=True)
+    sub.add_parser("status")
+    sub.add_parser("down")
+    sub.add_parser("destroy")
+    r=sub.add_parser("run"); r.add_argument("--groups",default="all"); r.add_argument("--no-cleanup",action="store_true")
+    args=p.parse_args(); cfg=load_cfg()
+
+    if args.cmd=="bootstrap": return bootstrap(cfg)
+    if args.cmd=="status":
+        return run_coord_python(cfg, "--config /tmp/trustann_topology.json --aws-status")
+    if args.cmd in ("up","scale"):
+        n=args.workers
+        if args.cmd=="up" and n is None: n=cfg["cluster"]["shards"]*cfg["cluster"]["replicas"]
+        xs=provision(cfg,n)
+        if len(xs)>=cfg["cluster"]["shards"]*cfg["cluster"]["replicas"]:
+            deploy(cfg,xs)
+        return
+    if args.cmd=="install-workers":
+        return install_workers(cfg, args.worker or None)
+    if args.cmd=="worker-debug":
+        # Run diagnostics through the coordinator without depending on the
+        # coordinator's deployed orchestrator.py version.
+        host = args.worker
+        debug_script = Path("/tmp/trustann_worker_debug.sh")
+        debug_script.write_text(r'''#!/usr/bin/env bash
+set +e
+HOST="$1"
+KEY="$HOME/.ssh/trustann-key.pem"
+SSH=(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -i "$KEY" "ec2-user@$HOST")
+
+echo "=== Worker: $HOST ==="
+echo "=== OS ==="
+"${SSH[@]}" 'uname -a; cat /etc/os-release | head -n 8'
+
+echo "=== Python/compiler ==="
+"${SSH[@]}" 'python3 --version; command -v gcc; gcc --version | head -n 1; command -v g++; g++ --version | head -n 1'
+
+echo "=== C++11 compile test ==="
+"${SSH[@]}" 'tmp=$(mktemp /tmp/cxx11.XXXXXX.cpp); printf "%s
+" "#include <iostream>" "int main(){return 0;}" > "$tmp"; g++ -std=c++11 "$tmp" -o "${tmp%.cpp}.out"; rc=$?; echo "cxx11_rc=$rc"; rm -f "$tmp" "${tmp%.cpp}.out"'
+
+echo "=== Worker venv ==="
+"${SSH[@]}" 'if [ -x ~/trustann-worker/venv/bin/python ]; then ~/trustann-worker/venv/bin/python --version; ~/trustann-worker/venv/bin/python -m pip --version; else echo "worker venv: MISSING"; fi'
+
+echo "=== NumPy ==="
+"${SSH[@]}" 'if [ -x ~/trustann-worker/venv/bin/python ]; then ~/trustann-worker/venv/bin/python -c "import numpy; print(numpy.__version__)" 2>&1; fi'
+
+echo "=== hnswlib ==="
+"${SSH[@]}" 'if [ -x ~/trustann-worker/venv/bin/python ]; then ~/trustann-worker/venv/bin/python -c "import hnswlib; print(hnswlib.__file__)" 2>&1; fi'
+
+echo "=== Worker ports ==="
+"${SSH[@]}" 'ss -lntp 2>/dev/null | grep -E ":(50051|50052)\b" || true'
+
+echo "=== Disk ==="
+"${SSH[@]}" 'df -h / | tail -n 1'
+''')
+        debug_script.chmod(0o755)
+        scp_to_coord(cfg, debug_script, "/tmp/trustann_worker_debug.sh")
+        debug_script.unlink(missing_ok=True)
+        cmd = (
+            'chmod +x /tmp/trustann_worker_debug.sh && '
+            '/tmp/trustann_worker_debug.sh ' + shlex.quote(host)
+        )
+        return ssh_coord(cfg, cmd)
+    if args.cmd=="deploy":
+        xs=[i for i in worker_instances(cfg) if i["State"]["Name"]=="running"]
+        deploy(cfg,xs); return
+    if args.cmd=="down":
+        ec2=aws_client(cfg); xs=[i for i in worker_instances(cfg) if i["State"]["Name"]=="running"]
+        if xs: ec2.stop_instances(InstanceIds=[i["InstanceId"] for i in xs])
+        run_coord_python(cfg, "--config /tmp/trustann_topology.json --stop-workers")
+        return
+    if args.cmd=="destroy":
+        ec2=aws_client(cfg); xs=worker_instances(cfg)
+        ids=[i["InstanceId"] for i in xs if i["State"]["Name"] not in ("terminated","shutting-down")]
+        if ids: ec2.terminate_instances(InstanceIds=ids)
+        return
+    if args.cmd=="run":
+        groups="" if args.groups=="all" else args.groups
+        cleanup="" if not args.no_cleanup else "--no-cleanup"
+        run_coord_python(cfg, f"--config /tmp/trustann_topology.json --run --groups {shlex.quote(groups)} {cleanup}")
+        return
+
+if __name__=="__main__":
+    main()

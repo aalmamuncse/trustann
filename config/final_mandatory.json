@@ -1,0 +1,128 @@
+{
+  "ssh": {
+    "user": "ec2-user",
+    "key": "/home/ec2-user/trustann-key.pem",
+    "connect_timeout_s": 10
+  },
+  "coordinator": {
+    "host": "COORDINATOR_PRIVATE_IP"
+  },
+  "workers": [
+    {
+      "name": "s0r0",
+      "host": "WORKER_PRIVATE_IP_0",
+      "shard": 0,
+      "replica": 0,
+      "failure_domain": "az-a",
+      "index": "/data/deep10m/shard0/index.bin",
+      "metadata": "/data/deep10m/shard0/meta.json",
+      "port": 50051
+    },
+    {
+      "name": "s0r1",
+      "host": "WORKER_PRIVATE_IP_1",
+      "shard": 0,
+      "replica": 1,
+      "failure_domain": "az-b",
+      "index": "/data/deep10m/shard0/index.bin",
+      "metadata": "/data/deep10m/shard0/meta.json",
+      "port": 50051
+    },
+    {
+      "name": "s0r2",
+      "host": "WORKER_PRIVATE_IP_2",
+      "shard": 0,
+      "replica": 2,
+      "failure_domain": "az-c",
+      "index": "/data/deep10m/shard0/index.bin",
+      "metadata": "/data/deep10m/shard0/meta.json",
+      "port": 50051
+    }
+  ],
+  "paths": {
+    "rpc_package": "~/TrustANN_AWS_Experiment_Harness",
+    "python": "~/trustann-env/bin/python",
+    "server_module": "trustann.rpc.worker_server",
+    "query_file": "/data/deep10m/queries.npy"
+  },
+  "dataset": {
+    "dimension": 96,
+    "distance": "l2",
+    "k": 9,
+    "query_count": 150,
+    "query_seed": 20260915
+  },
+  "ann": {
+    "M": 16,
+    "efConstruction": 200,
+    "efSearch": 64
+  },
+  "trustann": {
+    "r": 3,
+    "theta": 2,
+    "gamma": 1.0,
+    "dmin": 1.0,
+    "kmax": 1
+  },
+  "coordshift": {
+    "epoch_interval_ms": 200,
+    "quorum_k": 9,
+    "nodes": 60,
+    "rounds": 1500
+  },
+  "experiments": {
+    "ablation_queries": 100,
+    "integrity_queries": 100,
+    "cross_shard_queries": 100,
+    "offpath_loads_qps": [
+      50,
+      100,
+      200,
+      400
+    ],
+    "failure_percentages": [
+      0,
+      10,
+      20,
+      33,
+      49
+    ],
+    "failure_queries": 150,
+    "fanouts": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "recovery_events": [
+      "replica_failure",
+      "replica_replacement",
+      "shard_migration"
+    ],
+    "coordshift_k": [
+      5,
+      9,
+      15,
+      21
+    ],
+    "coordshift_p": [
+      0.1,
+      0.3
+    ],
+    "coordshift_modes": [
+      "uniform",
+      "diversity_aware"
+    ],
+    "seeds": [
+      11,
+      23,
+      47
+    ],
+    "mandatory_queries": 150,
+    "correlated_failure_queries": 150,
+    "clean_overhead_queries": 150,
+    "retrieval_attack_queries": 150,
+    "kmax_queries": 100,
+    "consistency_ablation_queries": 100
+  }
+}

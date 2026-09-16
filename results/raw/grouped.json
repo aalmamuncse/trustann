@@ -1,0 +1,82 @@
+{
+  "clean_overhead": [
+    {
+      "experiment": "clean_overhead",
+      "mean_ms": 0.9521698331809603,
+      "p50_ms": 0.9085165002034046,
+      "p95_ms": 1.006127603614004,
+      "p95_overhead_pct": 0.0,
+      "p99_ms": 1.266855204303283,
+      "qps": 1050.232810526302,
+      "queries": 150,
+      "system": "unverified_baseline",
+      "trusted_rate": 1.0
+    },
+    {
+      "experiment": "clean_overhead",
+      "mean_ms": 1.034169774017452,
+      "p50_ms": 1.0226890008198097,
+      "p95_ms": 1.1003319035808088,
+      "p95_overhead_pct": 9.363056895410038,
+      "p99_ms": 1.1627775903616566,
+      "qps": 966.9592219034673,
+      "queries": 150,
+      "system": "trustann",
+      "trusted_rate": 0.0
+    }
+  ],
+  "retrieval_attacks": [
+    {
+      "attack": "candidate_suppression",
+      "attacker": "s0r0",
+      "condition": "clean",
+      "experiment": "retrieval_attacks",
+      "mean_ms": 1.5051303993095644,
+      "p50_ms": 1.4957134990254417,
+      "p95_ms": 1.6008798978873529,
+      "p99_ms": 1.777390991337597,
+      "queries": 150,
+      "r_asr": 0.0,
+      "trusted_rate": 0.0
+    },
+    {
+      "attack": "candidate_suppression",
+      "attacker": "s0r0",
+      "condition": "attack",
+      "experiment": "retrieval_attacks",
+      "mean_ms": 1.5129413602213997,
+      "p50_ms": 1.4962200002628379,
+      "p95_ms": 1.6160278566530906,
+      "p99_ms": 2.1705000658403097,
+      "queries": 150,
+      "r_asr": 0.0,
+      "trusted_rate": 0.0
+    },
+    {
+      "attack": "ranking_manipulation",
+      "attacker": "s0r0",
+      "condition": "clean",
+      "experiment": "retrieval_attacks",
+      "mean_ms": 1.4932566006124641,
+      "p50_ms": 1.4964370056986809,
+      "p95_ms": 1.5844831046706531,
+      "p99_ms": 1.6315033999853767,
+      "queries": 150,
+      "r_asr": 0.0,
+      "trusted_rate": 0.0
+    },
+    {
+      "attack": "ranking_manipulation",
+      "attacker": "s0r0",
+      "condition": "attack",
+      "experiment": "retrieval_attacks",
+      "mean_ms": 1.5146756474860013,
+      "p50_ms": 1.5003000080469064,
+      "p95_ms": 1.6224515449721364,
+      "p99_ms": 2.070946556486885,
+      "queries": 150,
+      "r_asr": 0.0,
+      "trusted_rate": 0.0
+    }
+  ]
+}

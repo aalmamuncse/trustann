@@ -1,0 +1,191 @@
+{
+  "config": {
+    "ann": {},
+    "coordinator": {
+      "host": "127.0.0.1"
+    },
+    "coordshift": {
+      "epoch_interval_ms": 200,
+      "nodes": 60,
+      "quorum_k": 9,
+      "rounds": 1500
+    },
+    "dataset": {
+      "dimension": 96,
+      "distance": "l2",
+      "k": 9,
+      "query_count": 150,
+      "query_file": "/data/trustann/deep100k/queries.fvecs",
+      "query_seed": 20260915
+    },
+    "experiments": {
+      "ablation_queries": 100,
+      "coordshift_k": [
+        5,
+        9,
+        15,
+        21
+      ],
+      "coordshift_modes": [
+        "uniform",
+        "diversity_aware"
+      ],
+      "coordshift_p": [
+        0.1,
+        0.3
+      ],
+      "cross_shard_queries": 100,
+      "exclude": [
+        "weak_scaling"
+      ],
+      "failure_percentages": [
+        0,
+        10,
+        20,
+        33,
+        49
+      ],
+      "failure_queries": 150,
+      "fanouts": [
+        1,
+        2,
+        3
+      ],
+      "integrity_queries": 100,
+      "offpath_loads_qps": [
+        50,
+        100,
+        200,
+        400
+      ],
+      "recovery_events": [
+        "replica_failure",
+        "replica_replacement",
+        "shard_migration"
+      ],
+      "seeds": [
+        11,
+        23,
+        47
+      ]
+    },
+    "paths": {
+      "python": "/home/ec2-user/trustann-env/bin/python",
+      "query_file": "/data/trustann/deep100k/queries.fvecs",
+      "rpc_package": "/home/ec2-user/TrustANN_AWS_Experiment_Harness",
+      "server_module": "trustann.rpc.worker_server"
+    },
+    "ssh": {
+      "connect_timeout_s": 15,
+      "key": "/home/ec2-user/.ssh/trustann-key.pem",
+      "user": "ec2-user"
+    },
+    "trustann": {
+      "dmin": 1.0,
+      "gamma": 1.0,
+      "kmax": 1,
+      "r": 3,
+      "theta": 2
+    },
+    "workers": [
+      {
+        "failure_domain": "az-a",
+        "host": "172.31.12.13",
+        "instance_id": "i-002e44d2eff9ea3bb",
+        "name": "s0r0",
+        "port": 50051,
+        "public_host": "3.237.83.209",
+        "replica": 0,
+        "shard": 0
+      },
+      {
+        "failure_domain": "az-b",
+        "host": "172.31.3.111",
+        "instance_id": "i-0207310f9c6fff48a",
+        "name": "s0r1",
+        "port": 50051,
+        "public_host": "100.53.68.210",
+        "replica": 1,
+        "shard": 0
+      },
+      {
+        "failure_domain": "az-c",
+        "host": "172.31.9.52",
+        "instance_id": "i-0530bc3e5f2a88783",
+        "name": "s0r2",
+        "port": 50051,
+        "public_host": "100.58.172.71",
+        "replica": 2,
+        "shard": 0
+      },
+      {
+        "failure_domain": "az-a",
+        "host": "172.31.13.95",
+        "instance_id": "i-082d6d8f50b2c4c6f",
+        "name": "s1r0",
+        "port": 50051,
+        "public_host": "34.236.238.20",
+        "replica": 0,
+        "shard": 1
+      },
+      {
+        "failure_domain": "az-b",
+        "host": "172.31.9.116",
+        "instance_id": "i-08db78b74bb632a81",
+        "name": "s1r1",
+        "port": 50051,
+        "public_host": "100.58.189.249",
+        "replica": 1,
+        "shard": 1
+      },
+      {
+        "failure_domain": "az-c",
+        "host": "172.31.12.39",
+        "instance_id": "i-097fb877998a010a3",
+        "name": "s1r2",
+        "port": 50051,
+        "public_host": "44.200.253.36",
+        "replica": 2,
+        "shard": 1
+      },
+      {
+        "failure_domain": "az-a",
+        "host": "172.31.0.47",
+        "instance_id": "i-0be088096d62609db",
+        "name": "s2r0",
+        "port": 50051,
+        "public_host": "100.59.51.116",
+        "replica": 0,
+        "shard": 2
+      },
+      {
+        "failure_domain": "az-b",
+        "host": "172.31.10.107",
+        "instance_id": "i-0be8aef8a7807e2d9",
+        "name": "s2r1",
+        "port": 50051,
+        "public_host": "44.200.237.143",
+        "replica": 1,
+        "shard": 2
+      },
+      {
+        "failure_domain": "az-c",
+        "host": "172.31.7.172",
+        "instance_id": "i-0deea75dc8138b739",
+        "name": "s2r2",
+        "port": 50051,
+        "public_host": "98.92.215.182",
+        "replica": 2,
+        "shard": 2
+      }
+    ]
+  },
+  "experiment_counts": {},
+  "finished_at": 1789579674.740219,
+  "groups": [
+    "mandatory"
+  ],
+  "started_at": 1789579674.7042928,
+  "status": "completed",
+  "weak_scaling": false
+}

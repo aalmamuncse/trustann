@@ -1,0 +1,77 @@
+aws:
+  region: us-east-1
+  ami_id: ami-0b301e023c868669e
+  instance_type: m7i.large
+  key_name: trustann-key
+  subnet_id: subnet-0fba5939558ea7d82
+  security_group_ids:
+    - sg-0a39da4273478ad7f
+    - sg-0b1e635ecfa48d6d0
+  coordinator_sg: sg-0a39da4273478ad7f
+  worker_internal_sg: sg-0b1e635ecfa48d6d0
+  volume_size_gb: 30
+  project_tag: TrustANN
+
+coordinator:
+  host: 100.61.180.177
+  ssh_user: ec2-user
+  ssh_key: /Users/aalmamun/Desktop/projects/trustann/deploy/trustann-key.pem
+  remote_key: /home/ec2-user/.ssh/trustann-key.pem
+  remote_root: /home/ec2-user/TrustANN_AWS_Experiment_Harness
+  connect_timeout_s: 15
+
+cluster:
+  shards: 3
+  replicas: 3
+  port: 50051
+  worker_root: /home/ec2-user/trustann-worker
+  dataset_root: /data/trustann/deep100k
+  dataset_name: deep100k
+  failure_domains: [az-a, az-b, az-c]
+  ef_search: 64
+
+dataset:
+  dimension: 96
+  distance: l2
+  k: 9
+  query_count: 150
+  query_seed: 20260915
+  query_file: /data/trustann/deep100k/queries.fvecs
+
+ann:
+  M: 16
+  efConstruction: 200
+  efSearch: 64
+
+trustann:
+  r: 3
+  theta: 2
+  gamma: 1.0
+  dmin: 1.0
+  kmax: 1
+
+coordshift:
+  epoch_interval_ms: 200
+  quorum_k: 9
+  nodes: 60
+  rounds: 1500
+
+experiments:
+  ablation_queries: 100
+  integrity_queries: 100
+  cross_shard_queries: 100
+  offpath_loads_qps: [50, 100, 200, 400]
+  failure_percentages: [0, 10, 20, 33, 49]
+  failure_queries: 150
+  fanouts: [1, 2, 3]
+  recovery_events: [replica_failure, replica_replacement, shard_migration]
+  coordshift_k: [5, 9, 15, 21]
+  coordshift_p: [0.10, 0.30]
+  coordshift_modes: [uniform, diversity_aware]
+  seeds: [11, 23, 47]
+  exclude: [weak_scaling]
+  correlated_failure_queries: 150
+  clean_overhead_queries: 150
+  retrieval_attack_queries: 150
+  kmax_queries: 100
+  consistency_ablation_queries: 100
