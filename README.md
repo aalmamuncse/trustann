@@ -1,42 +1,5 @@
 # TrustANN
 
-**Anonymous artifact for double-blind review**
-
-<p align="center">
-  <strong>Trustworthy Distributed Vector Retrieval under Byzantine Retrieval and Replica Failures</strong>
-</p>
-
-<p align="center">
-  <em>This repository contains the experimental artifact for TrustANN.</em>
-</p>
-
----
-
-## Artifact Overview
-
-TrustANN is a middleware layer for trustworthy distributed vector retrieval. It operates above existing distributed ANN indexes and provides three complementary mechanisms:
-
-<ul>
-<li><strong>TrustBind:</strong> verifies retrieval evidence using replica agreement, consistency, diversity, and provenance.</li>
-<li><strong>CoordShift:</strong> performs asynchronous failure-domain-aware coordination without blocking the query critical path.</li>
-<li><strong>AvailGuard:</strong> performs bounded recovery when replicas are unavailable, stale, or provide conflicting evidence.</li>
-</ul>
-
-The artifact contains the implementation, experiment harness, configuration files, test cases, and scripts used to evaluate these mechanisms.
-
-The artifact is intended to allow reviewers to:
-
-<ol>
-<li>verify that the TrustANN retrieval and verification pipeline executes correctly;</li>
-<li>reproduce the TrustBind attack-detection and threshold experiments;</li>
-<li>evaluate the overhead of verification and distributed retrieval;</li>
-<li>exercise failure and recovery scenarios;</li>
-<li>evaluate CoordShift's asynchronous operation and failure-domain-aware coordination; and</li>
-<li>inspect the implementation and experiment configuration used to obtain the reported results.</li>
-</ol>
-
----
-
 # 1. Getting Started Instructions
 
 This section provides a short path for verifying that the artifact is functional.
