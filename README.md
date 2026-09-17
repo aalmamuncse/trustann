@@ -69,7 +69,7 @@ A successful execution verifies the core TrustBind logic, experiment harness, an
 
 ---
 
-## 1.4 Run a Minimal Synthetic Experiment
+## 1.4 Run a Minimal Experiment
 
 The artifact includes synthetic experiment support that does not require an AWS cluster.
 
