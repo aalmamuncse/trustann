@@ -1,581 +1,275 @@
-# TrustANN
+<h1>TrustANN</h1>
 
-# 1. Getting Started Instructions
+<p>
+  TrustANN is a middleware trust layer for distributed approximate
+  nearest-neighbor (ANN) retrieval. It operates above an existing ANN
+  backend and is independent of the underlying ANN indexing method.
+  The current artifact uses FAISS with HNSW indexes for evaluation.
+</p>
 
-This section provides a short path for verifying that the artifact is functional.
-
-## 1.1 Requirements
-
-The artifact requires:
-
-<ul>
-<li>Linux or macOS</li>
-<li>Python 3.x</li>
-<li>Git</li>
-<li>Python packages listed in <code>requirements.txt</code></li>
-</ul>
-
-The local tests and synthetic experiments do not require an AWS deployment.
-
-For the distributed experiments, the artifact additionally uses:
+<p>TrustANN provides three complementary protocols:</p>
 
 <ul>
-<li>AWS EC2 instances</li>
-<li>gRPC communication between coordinator and workers</li>
-<li>HNSW-based local ANN indexes</li>
+  <li>
+    <strong>TrustBind:</strong> query-level retrieval verification using
+    authenticated, consistent, and failure-domain-independent replica
+    evidence.
+  </li>
+  <li>
+    <strong>CoordShift:</strong> asynchronous, diversity-aware coordination
+    that builds reusable coordination epochs without placing coordination
+    on the query critical path.
+  </li>
+  <li>
+    <strong>AvailGuard:</strong> bounded, independence-aware evidence
+    recovery that preserves the trust criterion under replica failures.
+  </li>
 </ul>
 
-> <strong>Note:</strong> The AWS experiments require access to an AWS account and appropriate EC2 permissions. The repository does not contain AWS credentials, private keys, or other secrets.
+<h2>1. Requirements</h2>
 
----
+<ul>
+  <li>Linux or macOS</li>
+  <li>Python 3.x</li>
+  <li>Git</li>
+  <li>Packages listed in <code>requirements.txt</code></li>
+</ul>
 
-## 1.2 Clone and Install
+<p>
+  Local tests and synthetic experiments do not require AWS.
+</p>
 
-```bash
-git clone <ANONYMOUS-REPOSITORY-URL>
+<p>Distributed experiments additionally require:</p>
+
+<ul>
+  <li>AWS EC2</li>
+  <li>gRPC</li>
+  <li>FAISS with HNSW</li>
+</ul>
+
+<blockquote>
+  <strong>Note:</strong> Do not place AWS credentials, SSH private keys,
+  or other secrets in the repository.
+</blockquote>
+
+<h2>2. Installation</h2>
+
+<pre><code>git clone &lt;ANONYMOUS-REPOSITORY-URL&gt;
 cd TrustANN
 
 python3 -m venv .venv
 source .venv/bin/activate
 
-pip install -r requirements.txt
-```
+pip install -r requirements.txt</code></pre>
 
-If the repository provides a different environment specification, use the provided environment/configuration files.
+<h2>3. Tests</h2>
 
----
+<p>Run the TrustANN logic tests:</p>
 
-## 1.3 Run the Unit Tests
+<pre><code>pytest tests/test_trust_logic.py</code></pre>
 
-Run the TrustANN logic tests:
+<p>Run the synthetic experiment tests:</p>
 
-```bash
-pytest tests/test_trust_logic.py
-```
+<pre><code>pytest tests/test_experiments_synthetic.py</code></pre>
 
-Run the experiment tests:
+<p>Run the complete test suite:</p>
 
-```bash
-pytest tests/test_experiments_synthetic.py
-```
+<pre><code>pytest tests/</code></pre>
 
-Run the complete artifact test suite:
+<h2>4. Minimal Experiment</h2>
 
-```bash
-pytest tests/
-```
+<p>
+  The artifact provides synthetic experiments that do not require an AWS
+  cluster.
+</p>
 
-A successful execution verifies the core TrustBind logic, experiment harness, and synthetic evaluation pipeline.
+<pre><code>python orchestrator.py --config config/final_mandatory.json</code></pre>
 
----
+<p>
+  The experiments evaluate retrieval verification, TrustBind
+  acceptance/rejection, failure handling, latency, and experiment outputs.
+</p>
 
-## 1.4 Run a Minimal Experiment
-
-The artifact includes synthetic experiment support that does not require an AWS cluster.
-
-Use the provided experiment configuration:
-
-```bash
-python orchestrator.py --config config/final_mandatory.json
-```
-
-If the repository version uses a different command-line interface, the corresponding options are documented in the configuration and experiment scripts.
-
-The generated output includes experiment measurements that can be used to verify:
-
-<ul>
-<li>retrieval verification;</li>
-<li>TrustBind acceptance/rejection;</li>
-<li>failure handling;</li>
-<li>latency measurements; and</li>
-<li>experiment summary tables.</li>
-</ul>
-
----
-
-# 2. Detailed Instructions
-
-## 2.1 Artifact Organization
-
-The repository is organized as follows:
-
-```text
-TrustANN/
-├── trustann/
-│   ├── models.py
-│   ├── fault.py
-│   └── rpc/
-│       ├── worker.proto
-│       ├── worker_server.py
-│       └── worker_client.py
-│
-├── trustann_harness/
-│   ├── experiments.py
-│   ├── metrics.py
-│   ├── plotting.py
-│   ├── remote.py
-│   ├── rpc.py
-│   ├── tables.py
-│   └── trust_logic.py
-│
-├── tests/
-│   ├── test_trust_logic.py
-│   ├── test_experiments_synthetic.py
-│   └── test_final_mandatory.py
-│
-├── scripts/
-├── orchestrator.py
-├── config/
-├── requirements.txt
-└── README.md
-```
-
-The experimental package contains approximately 1.5K lines of Python code, excluding tests, configuration files, and auxiliary scripts.
-
----
-
-## 2.2 System Configuration
-
-The default TrustANN configuration uses:
+<h2>5. Default Configuration</h2>
 
 <table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Default</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Dataset</td>
-<td>Deep10M subset</td>
-</tr>
-<tr>
-<td>Vectors</td>
-<td>100K</td>
-</tr>
-<tr>
-<td>Dimension</td>
-<td>96</td>
-</tr>
-<tr>
-<td>Distance</td>
-<td>L2</td>
-</tr>
-<tr>
-<td>Shards</td>
-<td>3</td>
-</tr>
-<tr>
-<td>Replicas per shard</td>
-<td>3</td>
-</tr>
-<tr>
-<td>Total workers</td>
-<td>9</td>
-</tr>
-<tr>
-<td>HNSW M</td>
-<td>16</td>
-</tr>
-<tr>
-<td>HNSW efConstruction</td>
-<td>200</td>
-</tr>
-<tr>
-<td>HNSW efSearch</td>
-<td>64</td>
-</tr>
-<tr>
-<td>TrustBind threshold (<code>&theta;</code>)</td>
-<td>2</td>
-</tr>
-<tr>
-<td>AvailGuard recovery budget (<code>K<sub>max</sub></code>)</td>
-<td>1</td>
-</tr>
-<tr>
-<td>CoordShift quorum</td>
-<td>9</td>
-</tr>
-</tbody>
+  <thead>
+    <tr>
+      <th>Parameter</th>
+      <th>Default</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Dataset</td><td>Deep10M subset</td></tr>
+    <tr><td>Vectors</td><td>100K</td></tr>
+    <tr><td>Dimension</td><td>96</td></tr>
+    <tr><td>Distance</td><td>L2</td></tr>
+    <tr><td>Shards</td><td>3</td></tr>
+    <tr><td>Replicas/shard</td><td>3</td></tr>
+    <tr><td>Workers</td><td>9</td></tr>
+    <tr><td>FAISS index</td><td>HNSW</td></tr>
+    <tr><td>HNSW M</td><td>16</td></tr>
+    <tr><td>HNSW efConstruction</td><td>200</td></tr>
+    <tr><td>HNSW efSearch</td><td>64</td></tr>
+    <tr><td>TrustBind threshold (&theta;)</td><td>2</td></tr>
+    <tr><td>AvailGuard K<sub>max</sub></td><td>1</td></tr>
+    <tr><td>CoordShift quorum</td><td>9</td></tr>
+  </tbody>
 </table>
 
----
+<h2>6. Reproducing the Main Experiments</h2>
 
-# 3. Reproducing the Main Experiments
+<p>
+  The artifact reproduces five evaluation dimensions.
+</p>
 
-The experiments are organized around five evaluation questions.
+<h3>Q1. TrustBind Verification</h3>
 
-## Q1. TrustBind Verification
+<p>
+  Tests threshold boundaries, evidence-condition ablations, candidate
+  suppression, ranking manipulation, and retrieval integrity using
+  <code>R-ASR</code>.
+</p>
 
-The TrustBind experiments evaluate whether retrieval evidence is accepted only when sufficient independent and consistent evidence is available.
+<h3>Q2. CoordShift Off-Path Operation</h3>
 
-The experiments include:
+<p>
+  Tests 50, 100, 200, and 400 QPS and measures query latency,
+  throughput, coordination commits, and query waits.
+</p>
 
-<ul>
-<li>threshold-boundary experiments;</li>
-<li>replica-counting ablations;</li>
-<li>consistency-based verification;</li>
-<li>candidate-suppression attacks;</li>
-<li>ranking-manipulation attacks; and</li>
-<li>integrity/attack positive-control experiments.</li>
-</ul>
+<h3>Q3. Failure and Recovery</h3>
 
-The relevant experiment can be invoked through the experiment harness using the provided configuration.
+<p>
+  Tests uniformly distributed replica crashes from 0% to 49% while
+  preserving the TrustBind evidence threshold. When sufficient evidence
+  cannot be established, TrustANN returns <code>Unverified</code>.
+</p>
 
-The primary result to inspect is whether the attack succeeds in producing a trusted retrieval result. The corresponding metric is reported as <code>R-ASR</code>.
+<h3>Q4. Distributed Retrieval Cost</h3>
 
-A successful verification run should show:
+<p>
+  Varies query fan-out from one to three shards and measures evidence
+  volume and p50/p95 latency.
+</p>
 
-```text
-TrustBind threshold >= required evidence
-        |
-        v
-insufficient / inconsistent evidence
-        |
-        v
-Unverified
-```
+<h3>Q5. CoordShift Failure-Domain Diversity</h3>
 
-rather than accepting the corrupted retrieval.
+<p>
+  Uses a separate 60-worker coordination deployment with
+  <code>k &isin; {5, 9, 15, 21}</code> and adversarial fractions
+  <code>p &isin; {0.10, 0.30}</code>. It measures failure-domain coverage
+  and adversary-influenced rounds.
+</p>
 
----
+<h2>7. AWS Deployment</h2>
 
-## Q2. CoordShift Off-Path Operation
+<p>The default distributed deployment uses:</p>
 
-CoordShift is evaluated independently from the query critical path.
-
-The experiment varies background load:
-
-```text
-50 QPS
-100 QPS
-200 QPS
-400 QPS
-```
-
-and measures:
-
-<ul>
-<li>observed query throughput;</li>
-<li>query latency;</li>
-<li>coordination commits; and</li>
-<li>whether queries wait for coordination.</li>
-</ul>
-
-The expected behavior is that coordination continues asynchronously without introducing a query-side coordination barrier.
-
----
-
-## Q3. Failure and Recovery
-
-TrustANN is evaluated under uniformly distributed replica failures from:
-
-```text
-0%
-10%
-20%
-33%
-49%
-```
-
-The experiment measures:
-
-<ul>
-<li>trusted retrieval rate;</li>
-<li>fallback/recovery activity;</li>
-<li>p50 latency;</li>
-<li>p95 latency; and</li>
-<li>the point at which sufficient evidence can no longer be established.</li>
-</ul>
-
-The default configuration does not reduce the TrustBind evidence threshold when replicas fail. When sufficient evidence cannot be established, TrustANN returns:
-
-```text
-Unverified
-```
-
-rather than lowering the verification requirements.
-
----
-
-## Q4. Distributed Retrieval and Verification Cost
-
-The artifact evaluates the cost of increasing retrieval fan-out.
-
-The fan-out experiment uses:
-
-```text
-1 shard
-2 shards
-3 shards
-```
-
-and records:
-
-<ul>
-<li>number of retrieval/evidence responses;</li>
-<li>p50 latency; and</li>
-<li>p95 latency.</li>
-</ul>
-
-This experiment isolates the cost associated with obtaining and verifying additional distributed evidence.
-
----
-
-## Q5. CoordShift Failure-Domain Diversity
-
-CoordShift is evaluated separately using a 60-worker coordination deployment.
-
-The experiment varies:
-
-```text
-quorum size k = {5, 9, 15, 21}
-adversarial fraction p = {0.10, 0.30}
-```
-
-Each configuration executes 1,500 coordination rounds.
-
-Two coordination policies are compared:
-
-<ul>
-<li>uniform selection; and</li>
-<li>failure-domain-aware diversity selection.</li>
-</ul>
-
-The primary metric is failure-domain coverage. The experiment is designed to determine whether diversity-aware selection increases the number of distinct failure domains represented in the selected quorum.
-
-The experiment does <strong>not</strong> assume that diversity-aware selection universally reduces adversarial influence. The artifact reports both coverage and adversarial-influence measurements.
-
----
-
-# 4. AWS Deployment
-
-The distributed evaluation uses:
-
-```text
-1 coordinator
+<pre><code>1 coordinator
 9 worker instances
 3 shards
 3 replicas per shard
 gRPC communication
-```
+FAISS HNSW indexes</code></pre>
 
-Each worker hosts a local HNSW index.
+<p>
+  Separate scale-out experiments use up to <strong>144 workers</strong>,
+  while the CoordShift resilience experiment uses a dedicated
+  <strong>60-worker</strong> deployment.
+</p>
 
-The deployment scripts configure:
+<h2>8. Fault Injection</h2>
 
-<ul>
-<li>worker instances;</li>
-<li>shard/replica placement;</li>
-<li>network communication;</li>
-<li>fault injection;</li>
-<li>experiment execution; and</li>
-<li>result collection.</li>
-</ul>
-
-Before launching AWS experiments, configure the deployment parameters in the provided example configuration.
-
-<strong>Do not place AWS credentials, SSH private keys, or account-specific secrets in the repository.</strong>
-
----
-
-# 5. Fault Injection
-
-The artifact supports experiments involving:
+<p>The artifact supports:</p>
 
 <ul>
-<li>crashed replicas;</li>
-<li>unreachable replicas;</li>
-<li>stale epochs;</li>
-<li>corrupted retrieval evidence;</li>
-<li>corrupted coordination summaries;</li>
-<li>replica replacement; and</li>
-<li>shard migration.</li>
+  <li>crashed or unreachable replicas;</li>
+  <li>stale epochs;</li>
+  <li>corrupted retrieval evidence;</li>
+  <li>corrupted coordination summaries;</li>
+  <li>replica replacement; and</li>
+  <li>shard migration.</li>
 </ul>
 
-The fault-injection experiments are intended to evaluate the behavior of TrustBind and AvailGuard under the failure model described in the paper.
+<p>
+  These experiments evaluate TrustBind, CoordShift, and AvailGuard under
+  the fault model described in the paper.
+</p>
 
----
+<h2>9. Outputs</h2>
 
-# 6. Output and Results
-
-Experiment outputs are written to the configured results directory.
-
-The repository provides utilities for:
+<p>Experiment outputs include:</p>
 
 <ul>
-<li>aggregating experiment measurements;</li>
-<li>computing latency and throughput statistics;</li>
-<li>generating result tables; and</li>
-<li>generating plots from collected measurements.</li>
+  <li>trusted-query rate;</li>
+  <li>R-ASR;</li>
+  <li>p50/p95 latency;</li>
+  <li>throughput;</li>
+  <li>fallback activity;</li>
+  <li>coordination behavior;</li>
+  <li>failure-domain coverage; and</li>
+  <li>generated tables and plots.</li>
 </ul>
 
-The experiment outputs can therefore be regenerated without manually editing the raw measurements.
+<p>
+  The repository provides utilities for aggregating measurements and
+  generating experiment results.
+</p>
 
----
+<h2>10. Reproducibility Notes</h2>
 
-# 7. Mapping Artifact Experiments to Paper Claims
+<p>
+  Experiments use fixed configurations and deterministic query seeds where
+  applicable. The AWS evaluation uses a 100K-vector subset of Deep10M with
+  96 dimensions and L2 distance.
+</p>
 
-<table>
-<thead>
-<tr>
-<th>Paper Evaluation</th>
-<th>Artifact Component</th>
-<th>What to Inspect</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>TrustBind attack detection</td>
-<td><code>trust_logic.py</code> + experiment harness</td>
-<td>Trusted rate and R-ASR</td>
-</tr>
-<tr>
-<td>Threshold boundary</td>
-<td>TrustBind experiment</td>
-<td>Acceptance/rejection at different thresholds</td>
-</tr>
-<tr>
-<td>Retrieval integrity</td>
-<td>Attack/integrity experiments</td>
-<td>R-ASR and latency</td>
-</tr>
-<tr>
-<td>CoordShift off-path operation</td>
-<td>CoordShift experiments</td>
-<td>Latency, throughput, coordination waits</td>
-</tr>
-<tr>
-<td>Failure resilience</td>
-<td>Failure experiments + AvailGuard</td>
-<td>Trusted rate and fallback behavior</td>
-</tr>
-<tr>
-<td>Distributed retrieval cost</td>
-<td>Fan-out experiments</td>
-<td>Evidence volume and p95 latency</td>
-</tr>
-<tr>
-<td>CoordShift diversity</td>
-<td>60-worker resilience experiment</td>
-<td>Failure-domain coverage</td>
-</tr>
-<tr>
-<td>Recovery</td>
-<td>Recovery experiments</td>
-<td>Query errors and reconfiguration time</td>
-</tr>
-</tbody>
-</table>
+<p>
+  The 60-worker CoordShift experiment and the 18&ndash;144-worker scale-out
+  experiment use separate deployments from the default 9-worker topology.
+</p>
 
----
+<p>
+  Results may vary slightly due to AWS scheduling, network conditions,
+  and distributed timing. Reproduction is intended to validate the
+  reported trends and claims rather than require bit-for-bit identical
+  measurements.
+</p>
 
-# 8. Reproducibility Notes
+<h2>11. Artifact Scope</h2>
 
-The artifact uses deterministic query seeds and fixed experiment configurations where applicable. Corresponding experimental configurations use identical query sets and seeds to make comparisons consistent.
-
-The AWS experiments use a 100K-vector subset of Deep10M rather than the complete 10M-vector dataset. The subset preserves the original 96-dimensional representation and uses L2 distance.
-
-Some experiments are intentionally separated from the default nine-worker retrieval deployment. In particular, the CoordShift resilience experiment uses a dedicated 60-worker deployment to study coordination behavior at larger quorum sizes.
-
-Results may exhibit small variations due to:
+<p>
+  The artifact provides the implementation and evaluation infrastructure
+  for:
+</p>
 
 <ul>
-<li>AWS instance scheduling;</li>
-<li>network conditions;</li>
-<li>background system load; and</li>
-<li>timing variability in distributed execution.</li>
+  <li>TrustBind's evidence-based retrieval verification;</li>
+  <li>CoordShift's asynchronous coordination;</li>
+  <li>AvailGuard's bounded evidence recovery;</li>
+  <li>verification and distributed-retrieval overhead; and</li>
+  <li>failure-domain-aware coordination.</li>
 </ul>
 
-The goal of reproduction is therefore to validate the reported trends and claims rather than require bit-for-bit identical measurements.
+<p>
+  TrustANN operates above an existing ANN index and does not formally
+  guarantee ANN recall preservation. The current evaluation uses FAISS
+  with HNSW as the underlying ANN backend.
+</p>
 
----
+<h2>12. Safety</h2>
 
-# 9. Safety and Resource Considerations
-
-The artifact performs distributed-system experiments and may create AWS resources when the AWS deployment scripts are used.
-
-Reviewers should:
+<p>When running AWS experiments:</p>
 
 <ul>
-<li>verify AWS credentials and permissions before deployment;</li>
-<li>review the configured instance count and instance type;</li>
-<li>terminate EC2 instances after completing experiments;</li>
-<li>remove unused storage resources; and</li>
-<li>avoid running deployment scripts against production infrastructure.</li>
+  <li>verify AWS credentials and permissions;</li>
+  <li>review the configured instance count and type;</li>
+  <li>terminate EC2 instances after experiments;</li>
+  <li>remove unused storage resources; and</li>
+  <li>never run deployment scripts against production infrastructure.</li>
 </ul>
 
-The repository does not intentionally perform destructive operations against external systems.
-
----
-
-# 10. Troubleshooting
-
-### Python dependency errors
-
-Recreate the virtual environment and reinstall dependencies:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-### Test failures
-
-Run the failing test independently:
-
-```bash
-pytest -v tests/test_trust_logic.py
-```
-
-or:
-
-```bash
-pytest -v tests/test_experiments_synthetic.py
-```
-
-### AWS deployment failures
-
-Check:
-
-<ul>
-<li>AWS credentials and permissions;</li>
-<li>security-group rules;</li>
-<li>instance availability in the selected region;</li>
-<li>SSH connectivity;</li>
-<li>worker configuration; and</li>
-<li>coordinator/worker network connectivity.</li>
-</ul>
-
-Do not commit credentials or private SSH keys while debugging deployment problems.
-
----
-
-# 11. Artifact Scope
-
-This artifact is intended to reproduce and inspect the experimental claims made in the accompanying paper.
-
-In particular, the artifact provides the implementation and evaluation infrastructure necessary to examine:
-
-<ul>
-<li>TrustBind's evidence-based retrieval verification;</li>
-<li>CoordShift's asynchronous coordination;</li>
-<li>AvailGuard's bounded failure recovery;</li>
-<li>the latency and communication overhead of verification; and</li>
-<li>failure-domain-aware coordination behavior.</li>
-</ul>
-
-The artifact does not claim to provide a formal guarantee of ANN recall preservation. TrustANN operates above an existing ANN index and evaluates the trustworthiness and sufficiency of distributed retrieval evidence under the fault model described in the paper.
-
----
-
-# 12. License
-
-This artifact is provided for research and evaluation purposes.
-
-See `LICENSE` for the applicable license terms.
-
---
+<p>
+  See <code>LICENSE</code> for license terms.
+</p>
